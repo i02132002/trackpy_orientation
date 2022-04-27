@@ -1,7 +1,10 @@
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+import six
 import sys
-import warnings
 
 # re-import some builtins for legacy numba versions if future is installed
+from six.moves import range
 try:
     from __builtin__ import int, round
 except ImportError:
@@ -14,22 +17,23 @@ NUMBA_AVAILABLE = True
 message = ''
 
 try:
-    # numba deprecationwarnings from numpy 1.20
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", module="numpy")
-        import numba
+    import numba
 except ImportError:
     NUMBA_AVAILABLE = False
     message = ("To use numba-accelerated variants of core "
                "functions, you must install numba.")
 
 
-class RegisteredFunction:
+class RegisteredFunction(object):
     """Enable toggling between original function and numba-compiled one."""
 
     def __init__(self, func, fallback=None, jit_kwargs=None):
         self.func = func
-        self.func_name = func.__name__
+        # This covers a Python 2/3 change not covered by six
+        try:
+            self.func_name = func.__name__
+        except AttributeError:
+            self.func_name = func.func_name
         self.module_name = func.__module__
         self.jit_kwargs = jit_kwargs
         if fallback is not None:

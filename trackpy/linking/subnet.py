@@ -1,12 +1,15 @@
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+import six
+from six.moves import range
 import itertools
 import functools
 
 import numpy as np
 import pandas as pd
-from scipy.spatial import cKDTree
 
 from .utils import points_to_arr
-from ..utils import default_pos_columns
+from ..utils import default_pos_columns, cKDTree
 
 try:
     from sklearn.neighbors import BallTree
@@ -14,7 +17,7 @@ except ImportError:
     BallTree = None
 
 
-class HashBase:
+class HashBase(object):
     """ Base for classes that efficiently find features near a point. """
     def __init__(self, points, ndim):
         """Takes a list of particles."""
@@ -95,7 +98,7 @@ class HashKDTree(HashBase):
         if dist_func is not None:
             raise ValueError("For custom distance functions please use "
                              "the 'BTree' neighbor_strategy.")
-        super().__init__(points, ndim)
+        super(HashKDTree, self).__init__(points, ndim)
         if to_eucl is None:
             self.to_eucl = lambda x: x
         else:
@@ -147,7 +150,7 @@ class HashKDTree(HashBase):
         if rescale:
             pos = self.to_eucl(pos)
         found = self.tree.query_ball_point(pos, search_range)
-        found = {i for sl in found for i in sl}  # ravel
+        found = set([i for sl in found for i in sl])  # ravel
         if len(found) == 0:
             return
         else:
@@ -161,7 +164,7 @@ class HashBTree(HashBase):
         if BallTree is None:
             raise ImportError("Scikit-learn (sklearn) is required "
                               "for using the 'BTree' neighbor_strategy.")
-        super().__init__(points, ndim)
+        super(HashBTree, self).__init__(points, ndim)
         if to_eucl is None:
             self.to_eucl = lambda x: x
         else:
@@ -296,7 +299,7 @@ def split_subnet(source, dest, new_range):
     return (subnets[key] for key in subnets)
 
 
-class Subnets:
+class Subnets(object):
     """ Class that identifies the possible links between two groups of features.
 
     Candidates and subnet indices are stored inside the Point objects that are

@@ -1,3 +1,7 @@
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+import six
+from six.moves import range, zip
 import warnings
 import logging
 
@@ -151,7 +155,7 @@ def find_link(reader, search_range, separation, diameter=None, memory=0,
             n_traj = 0
         else:
             n_traj = len(f_frame)
-        logger.info("Frame {}: {} trajectories present.".format(frame_no,
+        logger.info("Frame {0}: {1} trajectories present.".format(frame_no,
                                                                   n_traj))
         if n_traj == 0:
             continue
@@ -305,7 +309,7 @@ class FindLinker(Linker):
                           "the FindLinker and likely will cause issues!")
         # initialize the Linker.
         # beware: self.search_range is a scalar, while search_range is a tuple
-        super().__init__(search_range, **kwargs)
+        super(FindLinker, self).__init__(search_range, **kwargs)
         self.ndim = len(search_range)
         if diameter is None:
             diameter = separation

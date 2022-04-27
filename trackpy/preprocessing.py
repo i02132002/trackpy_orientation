@@ -1,3 +1,6 @@
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+import six
 import logging
 
 import numpy as np
@@ -39,7 +42,7 @@ def lowpass(image, sigma=1, truncate=4):
     bandpass
     """
     sigma = validate_tuple(sigma, image.ndim)
-    result = np.array(image, dtype=float)
+    result = np.array(image, dtype=np.float)
     for axis, _sigma in enumerate(sigma):
         if _sigma > 0:
             correlate1d(result, gaussian_kernel(_sigma, truncate), axis,

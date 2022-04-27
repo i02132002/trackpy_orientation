@@ -1,6 +1,10 @@
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+import six
 import warnings
 import logging
 from functools import partial
+from multiprocessing.pool import Pool
 
 import numpy as np
 import pandas as pd
@@ -9,7 +13,7 @@ from .preprocessing import (bandpass, convert_to_int, invert_image,
                             scalefactor_to_gamut)
 from .utils import (record_meta, validate_tuple, is_isotropic,
                     default_pos_columns, default_size_columns,
-                    pandas_concat, get_pool)
+                    pandas_concat)
 from .find import grey_dilation, where_close
 from .refine import refine_com, refine_com_arr
 from .masks import (binary_mask, N_binary_mask, r_squared_mask,
@@ -139,8 +143,8 @@ def minmass_v04_change(raw_image, old_minmass, diameter, preprocess=True,
     else:
         new_smoothing_size = validate_tuple(new_smoothing_size, ndim)
 
-    radius = tuple(int(d / 2) for d in diameter)
-    old_bp_size = tuple(s * 2 + 1 for s in old_smoothing_size)
+    radius = tuple((int(d / 2) for d in diameter))
+    old_bp_size = tuple((s * 2 + 1 for s in old_smoothing_size))
 
     n_px_refine = N_binary_mask(radius, ndim)
     n_px_old_bp = N_binary_mask(old_bp_size, ndim)
@@ -350,8 +354,8 @@ def locate(raw_image, diameter, minmass=None, maxsize=None, separation=None,
     # Check whether the image looks suspiciously like a color image.
     if 3 in shape or 4 in shape:
         dim = raw_image.ndim
-        warnings.warn("I am interpreting the image as {}-dimensional. "
-                      "If it is actually a {}-dimensional color image, "
+        warnings.warn("I am interpreting the image as {0}-dimensional. "
+                      "If it is actually a {1}-dimensional color image, "
                       "convert it to grayscale first.".format(dim, dim-1))
 
     if threshold is None:
@@ -459,7 +463,7 @@ def locate(raw_image, diameter, minmass=None, maxsize=None, separation=None,
     return refined_coords
 
 
-def batch(frames, diameter, output=None, meta=None, processes='auto',
+def batch(frames, diameter, output=None, meta=None, processes=1,
           after_locate=None, **kwargs):
     """Locate Gaussian-like blobs of some approximate size in a set of images.
 
@@ -536,7 +540,7 @@ def batch(frames, diameter, output=None, meta=None, processes='auto',
             source=source,
             **kwargs
         )
-        if isinstance(meta, str):
+        if isinstance(meta, six.string_types):
             with open(meta, 'w') as file_obj:
                 record_meta(meta_info, file_obj)
         else:
@@ -546,7 +550,20 @@ def batch(frames, diameter, output=None, meta=None, processes='auto',
     # Prepare wrapped function for mapping to `frames`
     curried_locate = partial(locate, **kwargs)
 
-    pool, map_func = get_pool(processes)
+    # Handle & validate argument `processes`
+    if processes == "auto":
+        processes = None  # Is replaced with `os.cpu_count` in Pool
+    elif not isinstance(processes, six.integer_types):
+        raise TypeError("`processes` must either be an integer or 'auto', "
+                        "was type {}".format(type(processes)))
+
+    if processes is None or processes > 1:
+        # Use multiprocessing
+        pool = Pool(processes=processes)
+        map_func = pool.imap
+    else:
+        pool = None
+        map_func = map
 
     if after_locate is None:
         def after_locate(frame_no, features):
@@ -558,14 +575,10 @@ def batch(frames, diameter, output=None, meta=None, processes='auto',
             image = frames[i]
             if hasattr(image, 'frame_no') and image.frame_no is not None:
                 frame_no = image.frame_no
-                # Even if this worked, if locate() was running in parallel,
-                # it may not have had access to the "frame_no" attribute.
-                # Therefore we'll add the frame number to the DataFrame if
-                # needed, below.
+                # If this works, locate created a 'frame' column.
             else:
                 frame_no = i
-            if 'frame' not in features.columns:
-                features['frame'] = frame_no  # just counting iterations
+                features['frame'] = i  # just counting iterations
             features = after_locate(frame_no, features)
 
             logger.info("Frame %d: %d features", frame_no, len(features))
@@ -601,7 +614,7 @@ def characterize(coords, image, radius, scale_factor=1.):
     isotropic = is_isotropic(radius)
 
     # largely based on trackpy.refine.center_of_mass._refine
-    coords_i = np.round(coords).astype(int)
+    coords_i = np.round(coords).astype(np.int)
     mass = np.full(N, np.nan)
     signal = np.full(N, np.nan)
     ecc = np.full(N, np.nan)

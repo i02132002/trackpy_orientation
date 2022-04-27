@@ -1,3 +1,6 @@
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+import six
 import logging
 import os
 from abc import ABCMeta, abstractmethod, abstractproperty
@@ -10,7 +13,7 @@ from .utils import pandas_concat
 logger = logging.getLogger(__name__)
 
 
-class FramewiseData:
+class FramewiseData(object):
     "Abstract base class defining a data container with framewise access."
 
     __metaclass__ = ABCMeta
@@ -57,7 +60,7 @@ class FramewiseData:
             return pandas_concat(iter(self))
         else:
             i = iter(self)
-            return pandas_concat(next(i) for _ in range(N))
+            return pandas_concat((next(i) for _ in range(N)))
 
     @property
     def max_frame(self):
@@ -66,7 +69,7 @@ class FramewiseData:
     def _validate(self, df):
         if self.t_column not in df.columns:
             raise ValueError("Cannot write frame without a column "
-                             "called {}".format(self.t_column))
+                             "called {0}".format(self.t_column))
         if df[self.t_column].nunique() != 1:
             raise ValueError("Found multiple values for 'frame'. "
                              "Write one frame at a time.")
@@ -90,7 +93,7 @@ len_key_prefix = len(KEY_PREFIX)
 
 def code_key(frame_no):
     "Turn the frame_no into a 'natural name' string idiomatic of HDFStore"
-    key = '{}{}'.format(KEY_PREFIX, frame_no)
+    key = '{0}{1}'.format(KEY_PREFIX, frame_no)
     return key
 
 
@@ -177,7 +180,7 @@ class PandasHDFStoreBig(PandasHDFStore):
         self._CACHE_NAME = '_Frames_Cache'
         self._frames_cache = None
         self._cache_dirty = False  # Whether _frames_cache needs to be written out
-        super().__init__(filename, mode, t_column,
+        super(PandasHDFStoreBig, self).__init__(filename, mode, t_column,
                                                 **kwargs)
 
     @property
@@ -196,7 +199,7 @@ class PandasHDFStoreBig(PandasHDFStore):
 
     def put(self, df):
         self._invalidate_cache()
-        super().put(df)
+        super(PandasHDFStoreBig, self).put(df)
 
     def rebuild_cache(self):
         """Delete cache on disk and rebuild it."""
@@ -223,7 +226,7 @@ class PandasHDFStoreBig(PandasHDFStore):
         if self.store.root._v_file._iswritable():
             _ = self.frames # Compute cache
             self._flush_cache()
-        super().close()
+        super(PandasHDFStoreBig, self).close()
 
 
 class PandasHDFStoreSingleNode(FramewiseData):
@@ -266,7 +269,7 @@ class PandasHDFStoreSingleNode(FramewiseData):
         self.store.append(self.key, df, data_columns=True)
 
     def get(self, frame_no):
-        frame = self.store.select(self.key, '{} == {}'.format(
+        frame = self.store.select(self.key, '{0} == {1}'.format(
             self._t_column, frame_no))
         return frame
 
@@ -286,7 +289,7 @@ class PandasHDFStoreSingleNode(FramewiseData):
             return self.store.select(self.key)
         else:
             Nth_frame = self.frames[N - 1]
-            return self.store.select(self.key, '{} <= {}'.format(
+            return self.store.select(self.key, '{0} <= {1}'.format(
                 self._t_column, Nth_frame))
 
     def close(self):

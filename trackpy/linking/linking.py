@@ -1,3 +1,7 @@
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+import six
+from six.moves import range, zip
 import warnings
 import logging
 import itertools, functools
@@ -98,7 +102,7 @@ def link_iter(coords_iter, search_range, **kwargs):
 
     for t, coords in coords_iter:
         linker.next_level(coords, t)
-        logger.info("Frame {}: {} trajectories present.".format(t, len(linker.particle_ids)))
+        logger.info("Frame {0}: {1} trajectories present.".format(t, len(linker.particle_ids)))
         yield t, linker.particle_ids
 
 
@@ -179,7 +183,7 @@ def link(f, search_range, pos_columns=None, t_column='frame', **kwargs):
     f = f.copy()
     # coerce t_column to integer type
     if not np.issubdtype(f[t_column].dtype, np.integer):
-        f[t_column] = f[t_column].astype(int)
+        f[t_column] = f[t_column].astype(np.integer)
     # sort on the t_column
     pandas_sort(f, t_column, inplace=True)
 
@@ -303,7 +307,14 @@ def adaptive_link_wrap(source_set, dest_set, search_range, subnet_linker,
     return sn_spl, sn_dpl
 
 
-class Linker:
+def _sort_key_spl_dpl(x):
+    if x[0] is not None:
+        return list(x[0].pos)
+    else:
+        return list(x[1].pos)
+
+
+class Linker(object):
     """Linker class that sequentially links ndarrays of coordinates together.
 
     The class can be used via the `init_level` and `next_level` methods.
@@ -525,7 +536,7 @@ class Linker:
 
     def apply_links(self, spl, dpl):
         new_mem_set = set()
-        for sp, dp in zip(spl, dpl):
+        for sp, dp in sorted(zip(spl, dpl), key=_sort_key_spl_dpl):
             # Do linking
             if sp is not None and dp is not None:
                 sp.track.add_point(dp)

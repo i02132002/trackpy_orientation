@@ -1,3 +1,8 @@
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+
+import six
+
 import numpy as np
 import pandas as pd
 from ..try_numba import try_numba_jit
@@ -8,10 +13,11 @@ import logging
 from ..utils import (validate_tuple, guess_pos_columns, default_pos_columns,
                      default_size_columns)
 from ..masks import (binary_mask, r_squared_mask,
-                     x_squared_masks, cosmask, sinmask)
+                     x_squared_masks, cosmask, sinmask, theta_mask)
 
-from ..try_numba import NUMBA_AVAILABLE, int, round
+from skimage.measure import moments_central
 
+from ..try_numba import NUMBA_AVAILABLE, range, int, round
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +89,7 @@ def refine_com(raw_image, image, radius, coords, max_iterations=10,
     if characterize:
         isotropic = radius[1:] == radius[:-1]
         columns += default_size_columns(image.ndim, isotropic) + \
-            ['ecc', 'signal', 'raw_mass']
+            ['ecc', 'orientation', 'angle', 'signal', 'raw_mass']
 
     if len(coords) == 0:
         return pd.DataFrame(columns=columns)
@@ -91,7 +97,7 @@ def refine_com(raw_image, image, radius, coords, max_iterations=10,
     refined = refine_com_arr(raw_image, image, radius, coords,
                              max_iterations=max_iterations,
                              engine=engine, shift_thresh=shift_thresh,
-                             characterize=characterize)
+                             characterize=characterize, walkthrough=True)
 
     return pd.DataFrame(refined, columns=columns, index=index)
 
@@ -122,7 +128,7 @@ def refine_com_arr(raw_image, image, radius, coords, max_iterations=10,
             engine = 'python'
 
     # In here, coord is an integer. Make a copy, will not modify inplace.
-    coords = np.round(coords).astype(int)
+    coords = np.round(coords).astype(np.int)
 
     if engine == 'python':
         results = _refine(raw_image, image, radius, coords, max_iterations,
@@ -225,6 +231,8 @@ def _refine(raw_image, image, radius, coords, max_iterations,
             Rg = np.empty((N, len(radius)), dtype=np.float64)
         ecc = np.empty(N, dtype=np.float64)
         signal = np.empty(N, dtype=np.float64)
+        orientation = np.empty(N, dtype=np.float64)
+        angle = np.empty(N, dtype=np.float64)
 
     ogrid = np.ogrid[[slice(0, i) for i in mask.shape]]  # for center of mass
     ogrid = [g.astype(float) for g in ogrid]
@@ -251,10 +259,10 @@ def _refine(raw_image, image, radius, coords, max_iterations,
 
         # stick to yx column order
         final_coords[feat] = cm_i
-
-        if walkthrough:
-            import matplotlib.pyplot as plt
-            plt.imshow(neighborhood)
+        threshh = 1 
+#         if walkthrough:
+#             import matplotlib.pyplot as plt
+#             plt.imshow(neighborhood > np.mean(neighborhood) * threshh)
 
         # Characterize the neighborhood of our final centroid.
         mass[feat] = neighborhood.sum()
@@ -270,9 +278,29 @@ def _refine(raw_image, image, radius, coords, max_iterations,
                                mass[feat])
         # I only know how to measure eccentricity in 2D.
         if ndim == 2:
-            ecc[feat] = np.sqrt(np.sum(neighborhood*cosmask(radius))**2 +
-                                np.sum(neighborhood*sinmask(radius))**2)
-            ecc[feat] /= (mass[feat] - neighborhood[radius] + 1e-6)
+            sin = np.sum(neighborhood * sinmask(radius)) / (mass[feat] - neighborhood[radius] + 1e-6) 
+            cos = np.sum(neighborhood * cosmask(radius)) / (mass[feat] - neighborhood[radius]+ 1e-6)
+            ecc[feat] = np.sqrt(sin**2 + cos**2)
+            #print(neighborhood.shape)
+            M = moments_central(neighborhood, order=2)
+            
+            orientation[feat] = np.arctan2(2 * M[1, 1] , M[2, 0] - M[0, 2]) / 2
+            if ((orientation[feat] >= -np.pi/2) & (orientation[feat] <= -np.pi/6)):
+                angle[feat] = 2*np.pi/3
+            elif ((orientation[feat] > -np.pi/6) & (orientation[feat] <= np.pi/6)):
+                angle[feat] = 0
+            elif ((orientation[feat] > np.pi/6) & (orientation[feat] <= np.pi/2)):
+                angle[feat] = 2*2*np.pi/3
+
+            #if ecc[feat] < 0.1:
+            #    angle[feat] = 0
+            
+#             m, n = neighborhood.shape
+#             R, C = np.mgrid[:m, :n]
+#             x = np.stack((R.ravel(), C.ravel()), axis=0)
+#             y = neighborhood.ravel()
+#             u, s, vh = np.linalg.svd(np.cov(x[:, y > np.mean(neighborhood) * threshh]))
+#             orientation[feat] = np.arctan(vh[0, 0] / vh[0, 1])
         else:
             ecc[feat] = np.nan
         signal[feat] = neighborhood.max()  # based on bandpassed image
@@ -282,7 +310,7 @@ def _refine(raw_image, image, radius, coords, max_iterations,
     if not characterize:
         return np.column_stack([final_coords, mass])
     else:
-        return np.column_stack([final_coords, mass, Rg, ecc, signal, raw_mass])
+        return np.column_stack([final_coords, mass, Rg, ecc, orientation, angle, signal, raw_mass])
 
 
 @try_numba_jit(nopython=True)

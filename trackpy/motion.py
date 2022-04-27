@@ -1,10 +1,14 @@
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+import six
 import numpy as np
 import pandas as pd
 from pandas import DataFrame, Series
 
 import warnings
 from warnings import warn
-from .utils import pandas_sort, pandas_concat, guess_pos_columns
+from .utils import (pandas_sort, pandas_concat, pandas_rolling,
+                    guess_pos_columns)
 
 
 def msd(traj, mpp, fps, max_lagtime=100, detail=False, pos_columns=None):
@@ -24,9 +28,9 @@ def msd(traj, mpp, fps, max_lagtime=100, detail=False, pos_columns=None):
     -------
     DataFrame([<x>, <y>, <x^2>, <y^2>, msd], index=t)
 
-        If detail is True, the DataFrame also contains a column N,
-        the estimated number of statistically independent measurements
-        that comprise the result at each lagtime.
+    If detail is True, the DataFrame also contains a column N,
+    the estimated number of statistically independent measurements
+    that comprise the result at each lagtime.
 
     Notes
     -----
@@ -34,8 +38,7 @@ def msd(traj, mpp, fps, max_lagtime=100, detail=False, pos_columns=None):
 
     See also
     --------
-    imsd
-    emsd
+    imsd() and emsd()
     """
     if traj['frame'].max() - traj['frame'].min() + 1 == len(traj):
         # no gaps: use fourier-transform algorithm
@@ -63,7 +66,7 @@ def _msd_N(N, t):
     tracking. Analysis of diffusion and flow in two-dimensional systems."
     Biophysical journal 60.4 (1991): 910.
     """
-    t = np.array(t, dtype=float)
+    t = np.array(t, dtype=np.float)
     return np.where(t > N/2,
                     1/(1+((N-t)**3+5*t-4*(N-t)**2*t-N)/(6*(N-t)*t**2)),
                     6*(N-t)**2*t/(2*N-t+4*N*t**2-5*t**3))
@@ -284,9 +287,9 @@ def compute_drift(traj, smoothing=0, pos_columns=None):
     # Compute the per frame averages. Keep only deltas of the same particle,
     # and between frames that are consecutive.
     mask = (f_diff['particle'] == 0) & (f_diff['frame_diff'] == 1)
-    dx = f_diff.loc[mask, list(pos_columns) + ['frame']].groupby('frame').mean()
+    dx = f_diff.loc[mask, pos_columns + ['frame']].groupby('frame').mean()
     if smoothing > 0:
-        dx = dx.rolling(smoothing, min_periods=0).mean()
+        dx = pandas_rolling(dx, smoothing, min_periods=0)
     return dx.cumsum()
 
 
@@ -461,10 +464,13 @@ def relate_frames(t, frame1, frame2, pos_columns=None):
         pos_columns = ['x', 'y']
     a = t[t.frame == frame1]
     b = t[t.frame == frame2]
-    j = a.set_index('particle')[pos_columns].join(
-         b.set_index('particle')[pos_columns], rsuffix='_b')
+    j = a.set_index('particle')[pos_columns+['angle']].join(
+        b.set_index('particle')[pos_columns+['angle']], rsuffix='_b')
+
     for pos in pos_columns:
         j['d' + pos] = j[pos + '_b'] - j[pos]
+        #j['orientation_1'] = frame1.orientation
+        #j['orientation_1'] = frame2.orientation
     j['dr'] = np.sqrt(np.sum([j['d' + pos]**2 for pos in pos_columns], 0))
     if pos_columns == ['x', 'y']:
         j['direction'] = np.arctan2(j.dy, j.dx)
@@ -483,12 +489,12 @@ def direction_corr(t, frame1, frame2):
 
     Returns
     -------
-    DataFrame for all particle pairs, including dx, dy, and direction
+    DataFrame, indexed by particle, including dx, dy, and direction
     """
     j = relate_frames(t, frame1, frame2)
-    cosine = np.cos(np.subtract.outer(j.direction.values, j.direction.values))
-    r = np.sqrt(np.subtract.outer(j.x.values, j.x.values)**2 +
-                np.subtract.outer(j.y.values, j.y.values)**2)
+    cosine = np.cos(np.subtract.outer(j.direction, j.direction))
+    r = np.sqrt(np.subtract.outer(j.x, j.x)**2 +
+                np.subtract.outer(j.y, j.y)**2)
     upper_triangle = np.triu_indices_from(r, 1)
     result = DataFrame({'r': r[upper_triangle],
                         'cos': cosine[upper_triangle]})

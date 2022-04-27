@@ -1,6 +1,10 @@
 """These functions generate handy plots."""
-from collections.abc import Iterable
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+import six
+from six.moves import zip
 from itertools import tee
+from collections import Iterable
 from functools import wraps
 import warnings
 import logging
@@ -39,8 +43,7 @@ def make_axes(func):
         import matplotlib.pyplot as plt
         if kwargs.get('ax') is None:
             kwargs['ax'] = plt.gca()
-            # show plot unless the matplotlib backend is headless
-            show_plot = (plt.get_backend() != "agg")
+            show_plot = True
         else:
             show_plot = False
 
@@ -473,13 +476,13 @@ def annotate(centroids, image, circle_size=None, color=None,
 
     if color is None:
         color = ['r']
-    if isinstance(color, str):
+    if isinstance(color, six.string_types):
         color = [color]
     if not isinstance(split_thresh, Iterable):
         split_thresh = [split_thresh]
 
     # The parameter image can be an image object or a filename.
-    if isinstance(image, str):
+    if isinstance(image, six.string_types):
         image = plt.imread(image)
     if invert:
         ax.imshow(1-image, **_imshow_style)

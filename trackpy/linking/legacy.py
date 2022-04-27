@@ -1,3 +1,7 @@
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+import six
+from six.moves import zip, range
 import logging
 from warnings import warn
 import itertools
@@ -5,10 +9,9 @@ import functools
 
 import numpy as np
 import pandas as pd
-from scipy.spatial import cKDTree
 
 from ..try_numba import NUMBA_AVAILABLE
-from ..utils import pandas_sort, validate_tuple, is_isotropic
+from ..utils import pandas_sort, cKDTree, validate_tuple, is_isotropic
 from .utils import (TrackUnstored, points_to_arr, UnknownLinkingError,
                     SubnetOversizeException)
 from .subnetlinker import (recursive_linker_obj, nonrecursive_link, drop_link,
@@ -17,7 +20,7 @@ from .subnetlinker import (recursive_linker_obj, nonrecursive_link, drop_link,
 logger = logging.getLogger(__name__)
 
 
-class Point:
+class Point(object):
     '''
     Base class for point (features) used in tracking.  This class
     contains all of the general stuff for interacting with
@@ -99,7 +102,7 @@ class Track(TrackUnstored):
     '''
     def __init__(self, point=None):
         self.points = []
-        super().__init__(point)
+        super(Track, self).__init__(point)
 
     def __iter__(self):
         return self.points.__iter__()
@@ -182,14 +185,14 @@ class PointND(Point):
         return "<%s at %d, " % (self.__class__.__name__, self.t) + coords + track + ">"
 
 
-class PointDiagnostics:
+class PointDiagnostics(object):
     """Mixin to add memory diagnostics collection to a Point object."""
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(PointDiagnostics, self).__init__(*args, **kwargs)
         self.diag = {}
 
     def add_to_track(self, track):
-        super().add_to_track(track)
+        super(PointDiagnostics, self).add_to_track(track)
         # See the note in the memory section of Linker.link(). If this link
         # is from memory, the track knows how many frames were skipped.
         memcount = track.report_memory()
@@ -203,7 +206,7 @@ class PointNDDiagnostics(PointDiagnostics, PointND):
     pass
 
 
-class TreeFinder:
+class TreeFinder(object):
     def __init__(self, points, search_range):
         """Takes a list of particles."""
         self.ndim = len(search_range)
@@ -262,7 +265,7 @@ class TreeFinder:
             return points_to_arr(self.points) / self.search_range
 
 
-class HashTable:
+class HashTable(object):
     """Basic hash table for fast look up of particles in neighborhood.
 
     Parameters
@@ -653,7 +656,7 @@ def link_df_iter(features, search_range, memory=0,
     index_iter = (fr.index.copy() for fr in features_forindex)
     # To allow extra columns to be recovered later
     features_forlinking, features_forpost = itertools.tee(
-        frame.reset_index(drop=True) for frame in features_for_reset)
+        (frame.reset_index(drop=True) for frame in features_for_reset))
     # make a generator over the frames
     levels = (_build_level(frame, pos_columns, t_column, diagnostics=diagnostics)
                          for frame in features_forlinking)
@@ -860,7 +863,7 @@ def link_iter(levels, search_range, memory=0,
                  track_cls=track_cls, hash_generator=hash_generator)
     return linker.link(levels)
 
-class Linker:
+class Linker(object):
     """See link_iter() for a description of parameters."""
     # Largest subnet we will attempt to solve.
     MAX_SUB_NET_SIZE = 30
